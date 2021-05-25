@@ -1,0 +1,86 @@
+;
+; VTVM.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Sample ; TODO: edit Class
+ClassGuid={78A1C341-4539-11d3-B88D-00C04FAD5171} ; TODO: edit ClassGuid
+Provider=%ManufacturerName%
+CatalogFile=VTVM.cat
+DriverVer= ; TODO: set DriverVer in stampinf property pages
+
+[DestinationDirs]
+DefaultDestDir = 12
+VTVM_Device_CoInstaller_CopyFiles = 11
+
+; ================= Class section =====================
+
+[ClassInstall32]
+Addreg=SampleClassReg
+
+[SampleClassReg]
+HKR,,,0,%ClassName%
+HKR,,Icon,,-5
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+VTVM.sys  = 1,,
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%VTVM.DeviceDesc%=VTVM_Device, Root\VTVM ; TODO: edit hw-id
+
+[VTVM_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+VTVM.sys
+
+;-------------- Service installation
+[VTVM_Device.NT.Services]
+AddService = VTVM,%SPSVCINST_ASSOCSERVICE%, VTVM_Service_Inst
+
+; -------------- VTVM driver install sections
+[VTVM_Service_Inst]
+DisplayName    = %VTVM.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\VTVM.sys
+
+;
+;--- VTVM_Device Coinstaller installation ------
+;
+
+[VTVM_Device.NT.CoInstallers]
+AddReg=VTVM_Device_CoInstaller_AddReg
+CopyFiles=VTVM_Device_CoInstaller_CopyFiles
+
+[VTVM_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[VTVM_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[VTVM_Device.NT.Wdf]
+KmdfService =  VTVM, VTVM_wdfsect
+[VTVM_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
+ClassName="Samples" ; TODO: edit ClassName
+DiskName = "VTVM Installation Disk"
+VTVM.DeviceDesc = "VTVM Device"
+VTVM.SVCDESC = "VTVM Service"

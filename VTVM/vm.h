@@ -1,0 +1,440 @@
+#pragma once
+
+
+#include "common.h"
+#include "EPT.h"
+#include "hooks.h"
+
+#define ALIGNMENT_PAGE_SIZE   4096
+#define MAXIMUM_ADDRESS	0xffffffffffffffff
+#define VMCS_SIZE   4096
+#define VMXON_SIZE   4096
+#define VMSTACK_SIZE	0x8000
+
+
+
+// VM-exit Control Bits 
+#define VM_EXIT_IA32E_MODE              0x00000200
+#define VM_EXIT_ACK_INTR_ON_EXIT        0x00008000
+#define VM_EXIT_SAVE_GUEST_PAT          0x00040000
+#define VM_EXIT_LOAD_HOST_PAT           0x00080000
+
+#define	VM_EXIT_SAVE_DEBUG_CONTROLS	(1 << 2)
+#define	VM_EXIT_HOST_LMA		(1 << 9)
+#define	VM_EXIT_LOAD_PERF_GLOBAL_CTRL	(1 << 12)
+#define	VM_EXIT_ACKNOWLEDGE_INTERRUPT	(1 << 15)
+#define	VM_EXIT_SAVE_PAT		(1 << 18)
+#define	VM_EXIT_LOAD_PAT		(1 << 19)
+#define	VM_EXIT_SAVE_EFER		(1 << 20)
+#define	VM_EXIT_LOAD_EFER		(1 << 21)
+#define	VM_EXIT_SAVE_PREEMPTION_TIMER	(1 << 22)
+
+
+
+// VM-entry Control Bits 
+#define VM_ENTRY_IA32E_MODE             0x00000200
+#define VM_ENTRY_SMM                    0x00000400
+#define VM_ENTRY_DEACT_DUAL_MONITOR     0x00000800
+#define VM_ENTRY_LOAD_GUEST_PAT         0x00004000
+
+#define	VM_ENTRY_LOAD_DEBUG_CONTROLS	(1 << 2)
+#define	VM_ENTRY_GUEST_LMA		(1 << 9)
+#define	VM_ENTRY_INTO_SMM		(1 << 10)
+#define	VM_ENTRY_DEACTIVATE_DUAL_MONITOR (1 << 11)
+#define	VM_ENTRY_LOAD_PERF_GLOBAL_CTRL	(1 << 13)
+#define	VM_ENTRY_LOAD_PAT		(1 << 14)
+#define	VM_ENTRY_LOAD_EFER		(1 << 15)
+
+typedef struct _CPUID_DATA {
+	int eax;
+	int ebx;
+	int ecx;
+	int edx;
+}CPUID_DATA, * PCPUID_DATA;
+
+typedef union _IA32_FEATURE_CONTROL_MSR {
+	ULONG64 All;
+	struct {
+		ULONG64 Lock : 1;                // [0]
+		ULONG64 EnableSMX : 1;           // [1]
+		ULONG64 EnableVmxon : 1;         // [2]
+		ULONG64 Reserved2 : 5;           // [3-7]
+		ULONG64 EnableLocalSENTER : 7;   // [8-14]
+		ULONG64 EnableGlobalSENTER : 1;  // [15]
+		ULONG64 Reserved3a : 16;         //
+		ULONG64 Reserved3b : 32;         // [16-63]
+	}Fields;
+} IA32_FEATURE_CONTROL_MSR;
+
+//From Intel manual(24.11.5 VMXON Region)
+typedef union _IA32_VMX_BASIC_MSR {
+	ULONG64 All;
+	struct
+	{
+		ULONG32 RevisionIdentifier : 31;   // [0-30]
+		ULONG32 Reserved1 : 1;             // [31]
+		ULONG32 RegionSize : 12;           // [32-43]
+		ULONG32 RegionClear : 1;           // [44]
+		ULONG32 Reserved2 : 3;             // [45-47]
+		ULONG32 SupportedIA64 : 1;         // [48]
+		ULONG32 SupportedDualMoniter : 1;  // [49]
+		ULONG32 MemoryType : 4;            // [50-53]
+		ULONG32 VmExitReport : 1;          // [54]
+		ULONG32 VmxCapabilityHint : 1;     // [55]
+		ULONG32 Reserved3 : 8;             // [56-63]
+	} Fields;
+}IA32_VMX_BASIC_MSR, *PIA32_VMX_BASIC_MSR;
+
+
+enum VMCS_FIELDS {
+	GUEST_ES_SELECTOR = 0x00000800,
+	GUEST_CS_SELECTOR = 0x00000802,
+	GUEST_SS_SELECTOR = 0x00000804,
+	GUEST_DS_SELECTOR = 0x00000806,
+	GUEST_FS_SELECTOR = 0x00000808,
+	GUEST_GS_SELECTOR = 0x0000080a,
+	GUEST_LDTR_SELECTOR = 0x0000080c,
+	GUEST_TR_SELECTOR = 0x0000080e,
+	HOST_ES_SELECTOR = 0x00000c00,
+	HOST_CS_SELECTOR = 0x00000c02,
+	HOST_SS_SELECTOR = 0x00000c04,
+	HOST_DS_SELECTOR = 0x00000c06,
+	HOST_FS_SELECTOR = 0x00000c08,
+	HOST_GS_SELECTOR = 0x00000c0a,
+	HOST_TR_SELECTOR = 0x00000c0c,
+	IO_BITMAP_A = 0x00002000,
+	IO_BITMAP_A_HIGH = 0x00002001,
+	IO_BITMAP_B = 0x00002002,
+	IO_BITMAP_B_HIGH = 0x00002003,
+	MSR_BITMAP = 0x00002004,
+	MSR_BITMAP_HIGH = 0x00002005,
+	VM_EXIT_MSR_STORE_ADDR = 0x00002006,
+	VM_EXIT_MSR_STORE_ADDR_HIGH = 0x00002007,
+	VM_EXIT_MSR_LOAD_ADDR = 0x00002008,
+	VM_EXIT_MSR_LOAD_ADDR_HIGH = 0x00002009,
+	VM_ENTRY_MSR_LOAD_ADDR = 0x0000200a,
+	VM_ENTRY_MSR_LOAD_ADDR_HIGH = 0x0000200b,
+	TSC_OFFSET = 0x00002010,
+	TSC_OFFSET_HIGH = 0x00002011,
+	VIRTUAL_APIC_PAGE_ADDR = 0x00002012,
+	VIRTUAL_APIC_PAGE_ADDR_HIGH = 0x00002013,
+	VMFUNC_CONTROLS = 0x00002018,
+	VMFUNC_CONTROLS_HIGH = 0x00002019,
+	EPT_POINTER = 0x0000201A,
+	EPT_POINTER_HIGH = 0x0000201B,
+	EPTP_LIST = 0x00002024,
+	EPTP_LIST_HIGH = 0x00002025,
+	/* 64-bit read-only fields */
+	GUEST_PHYSICAL_ADDRESS = 0x2400,
+	GUEST_PHYSICAL_ADDRESS_HIGH = 0x2401,
+	/* 64-bit guest-state fields */
+	VMCS_LINK_POINTER = 0x00002800,
+	VMCS_LINK_POINTER_HIGH = 0x00002801,
+	GUEST_IA32_DEBUGCTL = 0x00002802,
+	GUEST_IA32_DEBUGCTL_HIGH = 0x00002803,
+	VMCS_GUEST_IA32_PAT = 0x00002804,
+	VMCS_GUEST_IA32_EFER = 0x00002806,
+	VMCS_GUEST_IA32_PERF_GLOBAL_CTRL = 0x00002808,
+	VMCS_GUEST_PDPTE0 = 0x0000280A,
+	VMCS_GUEST_PDPTE1 = 0x0000280C,
+	VMCS_GUEST_PDPTE2 = 0x0000280E,
+	VMCS_GUEST_PDPTE3 = 0x00002810,
+	/* 64-bit host-state fields */
+	VMCS_HOST_IA32_PAT	= 0x00002C00,
+	VMCS_HOST_IA32_EFER	= 0x00002C02,
+	VMCS_HOST_IA32_PERF_GLOBAL_CTRL = 0x00002C04,
+	PIN_BASED_VM_EXEC_CONTROL = 0x00004000,
+	CPU_BASED_VM_EXEC_CONTROL = 0x00004002,
+	EXCEPTION_BITMAP = 0x00004004,
+	PAGE_FAULT_ERROR_CODE_MASK = 0x00004006,
+	PAGE_FAULT_ERROR_CODE_MATCH = 0x00004008,
+	CR3_TARGET_COUNT = 0x0000400a,
+	VM_EXIT_CONTROLS = 0x0000400c,
+	VM_EXIT_MSR_STORE_COUNT = 0x0000400e,
+	VM_EXIT_MSR_LOAD_COUNT = 0x00004010,
+	VM_ENTRY_CONTROLS = 0x00004012,
+	VM_ENTRY_MSR_LOAD_COUNT = 0x00004014,
+	VM_ENTRY_INTR_INFO_FIELD = 0x00004016,
+	VM_ENTRY_EXCEPTION_ERROR_CODE = 0x00004018,
+	VM_ENTRY_INSTRUCTION_LEN = 0x0000401a,
+	TPR_THRESHOLD = 0x0000401c,
+	SECONDARY_VM_EXEC_CONTROL = 0x0000401e,
+	VM_INSTRUCTION_ERROR = 0x00004400,
+	VM_EXIT_REASON = 0x00004402,
+	VM_EXIT_INTR_INFO = 0x00004404,
+	VM_EXIT_INTR_ERROR_CODE = 0x00004406,
+	IDT_VECTORING_INFO_FIELD = 0x00004408,
+	IDT_VECTORING_ERROR_CODE = 0x0000440a,
+	VM_EXIT_INSTRUCTION_LEN = 0x0000440c,
+	VMX_INSTRUCTION_INFO = 0x0000440e,
+	GUEST_ES_LIMIT = 0x00004800,
+	GUEST_CS_LIMIT = 0x00004802,
+	GUEST_SS_LIMIT = 0x00004804,
+	GUEST_DS_LIMIT = 0x00004806,
+	GUEST_FS_LIMIT = 0x00004808,
+	GUEST_GS_LIMIT = 0x0000480a,
+	GUEST_LDTR_LIMIT = 0x0000480c,
+	GUEST_TR_LIMIT = 0x0000480e,
+	GUEST_GDTR_LIMIT = 0x00004810,
+	GUEST_IDTR_LIMIT = 0x00004812,
+	GUEST_ES_AR_BYTES = 0x00004814,
+	GUEST_CS_AR_BYTES = 0x00004816,
+	GUEST_SS_AR_BYTES = 0x00004818,
+	GUEST_DS_AR_BYTES = 0x0000481a,
+	GUEST_FS_AR_BYTES = 0x0000481c,
+	GUEST_GS_AR_BYTES = 0x0000481e,
+	GUEST_LDTR_AR_BYTES = 0x00004820,
+	GUEST_TR_AR_BYTES = 0x00004822,
+	GUEST_INTERRUPTIBILITY_INFO = 0x00004824,
+	GUEST_ACTIVITY_STATE = 0x00004826,
+	GUEST_SM_BASE = 0x00004828,
+	GUEST_SYSENTER_CS = 0x0000482A,
+	HOST_IA32_SYSENTER_CS = 0x00004c00,
+	CR0_GUEST_HOST_MASK = 0x00006000,
+	CR4_GUEST_HOST_MASK = 0x00006002,
+	CR0_READ_SHADOW = 0x00006004,
+	CR4_READ_SHADOW = 0x00006006,
+	CR3_TARGET_VALUE0 = 0x00006008,
+	CR3_TARGET_VALUE1 = 0x0000600a,
+	CR3_TARGET_VALUE2 = 0x0000600c,
+	CR3_TARGET_VALUE3 = 0x0000600e,
+	EXIT_QUALIFICATION = 0x00006400,
+	GUEST_LINEAR_ADDRESS = 0x0000640a,
+	GUEST_CR0 = 0x00006800,
+	GUEST_CR3 = 0x00006802,
+	GUEST_CR4 = 0x00006804,
+	GUEST_ES_BASE = 0x00006806,
+	GUEST_CS_BASE = 0x00006808,
+	GUEST_SS_BASE = 0x0000680a,
+	GUEST_DS_BASE = 0x0000680c,
+	GUEST_FS_BASE = 0x0000680e,
+	GUEST_GS_BASE = 0x00006810,
+	GUEST_LDTR_BASE = 0x00006812,
+	GUEST_TR_BASE = 0x00006814,
+	GUEST_GDTR_BASE = 0x00006816,
+	GUEST_IDTR_BASE = 0x00006818,
+	GUEST_DR7 = 0x0000681a,
+	GUEST_RSP = 0x0000681c,
+	GUEST_RIP = 0x0000681e,
+	GUEST_RFLAGS = 0x00006820,
+	GUEST_PENDING_DBG_EXCEPTIONS = 0x00006822,
+	GUEST_SYSENTER_ESP = 0x00006824,
+	GUEST_SYSENTER_EIP = 0x00006826,
+	HOST_CR0 = 0x00006c00,
+	HOST_CR3 = 0x00006c02,
+	HOST_CR4 = 0x00006c04,
+	HOST_FS_BASE = 0x00006c06,
+	HOST_GS_BASE = 0x00006c08,
+	HOST_TR_BASE = 0x00006c0a,
+	HOST_GDTR_BASE = 0x00006c0c,
+	HOST_IDTR_BASE = 0x00006c0e,
+	HOST_IA32_SYSENTER_ESP = 0x00006c10,
+	HOST_IA32_SYSENTER_EIP = 0x00006c12,
+	HOST_RSP = 0x00006c14,
+	HOST_RIP = 0x00006c16,
+};
+
+
+// guest regs for x86_64
+typedef struct _GUEST_REGS
+{
+	ULONG64 rax;                  // 0x00         // NOT VALID FOR SVM
+	ULONG64 rcx;
+	ULONG64 rdx;                  // 0x10
+	ULONG64 rbx;
+	ULONG64 rsp;                  // 0x20         // rsp is not stored here on SVM
+	ULONG64 rbp;
+	ULONG64 rsi;                  // 0x30
+	ULONG64 rdi;
+	ULONG64 r8;                   // 0x40
+	ULONG64 r9;
+	ULONG64 r10;                  // 0x50
+	ULONG64 r11;
+	ULONG64 r12;                  // 0x60
+	ULONG64 r13;
+	ULONG64 r14;                  // 0x70
+	ULONG64 r15;
+} GUEST_REGS, * PGUEST_REGS;
+
+
+#define EXIT_REASON_EXCEPTION_NMI       0
+#define EXIT_REASON_EXTERNAL_INTERRUPT  1
+#define EXIT_REASON_TRIPLE_FAULT        2
+#define EXIT_REASON_INIT                3
+#define EXIT_REASON_SIPI                4
+#define EXIT_REASON_IO_SMI              5
+#define EXIT_REASON_OTHER_SMI           6
+#define EXIT_REASON_PENDING_VIRT_INTR   7
+#define EXIT_REASON_PENDING_VIRT_NMI    8
+#define EXIT_REASON_TASK_SWITCH         9
+#define EXIT_REASON_CPUID               10
+#define EXIT_REASON_GETSEC              11
+#define EXIT_REASON_HLT                 12
+#define EXIT_REASON_INVD                13
+#define EXIT_REASON_INVLPG              14
+#define EXIT_REASON_RDPMC               15
+#define EXIT_REASON_RDTSC               16
+#define EXIT_REASON_RSM                 17
+#define EXIT_REASON_VMCALL              18
+#define EXIT_REASON_VMCLEAR             19
+#define EXIT_REASON_VMLAUNCH            20
+#define EXIT_REASON_VMPTRLD             21
+#define EXIT_REASON_VMPTRST             22
+#define EXIT_REASON_VMREAD              23
+#define EXIT_REASON_VMRESUME            24
+#define EXIT_REASON_VMWRITE             25
+#define EXIT_REASON_VMXOFF              26
+#define EXIT_REASON_VMXON               27
+#define EXIT_REASON_CR_ACCESS           28
+#define EXIT_REASON_DR_ACCESS           29
+#define EXIT_REASON_IO_INSTRUCTION      30
+#define EXIT_REASON_MSR_READ            31
+#define EXIT_REASON_MSR_WRITE           32
+#define EXIT_REASON_INVALID_GUEST_STATE 33
+#define EXIT_REASON_MSR_LOADING         34
+#define EXIT_REASON_MWAIT_INSTRUCTION   36
+#define EXIT_REASON_MONITOR_TRAP_FLAG   37
+#define EXIT_REASON_MONITOR_INSTRUCTION 39
+#define EXIT_REASON_PAUSE_INSTRUCTION   40
+#define EXIT_REASON_MCE_DURING_VMENTRY  41
+#define EXIT_REASON_TPR_BELOW_THRESHOLD 43
+#define EXIT_REASON_APIC_ACCESS         44
+#define EXIT_REASON_ACCESS_GDTR_OR_IDTR 46
+#define EXIT_REASON_ACCESS_LDTR_OR_TR   47
+#define EXIT_REASON_EPT_VIOLATION       48
+#define EXIT_REASON_EPT_MISCONFIG       49
+#define EXIT_REASON_INVEPT              50
+#define EXIT_REASON_RDTSCP              51
+#define EXIT_REASON_VMX_PREEMPTION_TIMER_EXPIRED     52
+#define EXIT_REASON_INVVPID             53
+#define EXIT_REASON_WBINVD              54
+#define EXIT_REASON_XSETBV              55
+#define EXIT_REASON_APIC_WRITE          56
+#define EXIT_REASON_RDRAND              57
+#define EXIT_REASON_INVPCID             58
+#define EXIT_REASON_RDSEED              61
+#define EXIT_REASON_PML_FULL            62
+#define EXIT_REASON_XSAVES              63
+#define EXIT_REASON_XRSTORS             64
+#define EXIT_REASON_PCOMMIT             65
+
+#define VMCALL_TEST 0x1 // Test VMCALL
+#define VMCALL_VMXOFF 0x2 // Call VMXOFF to turn off the VTVM
+#define VMCALL_CHANGE_PAGE_ATTRIB		0x3			// VMCALL to Hook Change the attribute bits of the EPT Table
+#define VMCALL_INVEPT_ALL_CONTEXTS		0x4			// VMCALL to invalidate EPT (All Contexts)
+#define VMCALL_INVEPT_SINGLE_CONTEXT	0x5			// VMCALL to invalidate EPT (A Single Context)
+#define VMCALL_UNHOOK_ALL_PAGES			0x6			// VMCALL to remove a all physical addresses from hook list
+#define VMCALL_UNHOOK_SINGLE_PAGE		0x7			// VMCALL to remove a single physical address from hook list
+
+/* Control Register Access */
+#define TYPE_MOV_TO_CR	0
+#define TYPE_MOV_FROM_CR	1
+#define TYPE_CLTS	2
+#define TYPE_LMSW	3
+typedef union _MOV_CR {
+	ULONG All;
+	struct {
+		ULONG ControlRegister : 4;
+		ULONG AccessType : 2;
+		ULONG LMSWOpeandType : 1;
+		ULONG Reserved1 : 1;
+		ULONG Register : 4;
+		ULONG Reserved2 : 4;
+		ULONG LMSWSourceData : 16;
+		ULONG Reserved3;
+	}Fields;
+}MOV_CR, *PMOV_CR;
+
+// Table-27-7 Exit Qualification for EPT Violations
+typedef union _VMX_EXIT_QUALIFICATION_EPT_VIOLATION{
+	UINT64 All;
+	struct{
+		UINT64 ReadAccess : 1;
+		UINT64 WriteAccess : 1;
+		UINT64 ExecuteAccess : 1;
+		UINT64 EptReadable : 1;
+		UINT64 EptWriteable : 1;
+		UINT64 EptExecutable : 1;
+		UINT64 EptExecutableForUserMode : 1;
+		UINT64 ValidGuestLinearAddress : 1;
+		UINT64 CausedByTranslation : 1;
+		UINT64 UserModeLinearAddress : 1;
+		UINT64 ReadableWritablePage : 1;
+		UINT64 ExecuteDisablePage : 1;
+		UINT64 NmiUnblocking : 1;
+		UINT64 Reserved1 : 51;
+	}Fields;
+} VMX_EXIT_QUALIFICATION_EPT_VIOLATION, * PVMX_EXIT_QUALIFICATION_EPT_VIOLATION;
+
+//called in asm.asm
+UINT64 HostRsp;
+UINT64 HostRbp;
+
+ULONG64 HostCr3;
+
+extern unsigned char inline AsmInvept(unsigned long Type, void* Descriptors);
+extern unsigned char inline AsmInvvpid(unsigned long Type, void* Descriptors);
+void SaveHostState();
+/*
+set cr4 bits[13] bits[14]
+*/
+void inline EnableVMXOperation();
+void VMExitHandler();
+void GuestRun();
+
+ULONG64 Get_GDT_Base(VOID);
+ULONG64 Get_IDT_Base(VOID);
+USHORT GetCs(VOID);
+USHORT GetDs(VOID);
+USHORT GetEs(VOID);
+USHORT GetSs(VOID);
+USHORT GetFs(VOID);
+USHORT GetGs(VOID);
+USHORT GetLdtr(VOID);
+USHORT GetTr(VOID);
+USHORT Get_IDT_Limit(VOID);
+USHORT Get_GDT_Limit(VOID);
+ULONG64 Get_RFLAGS(VOID);
+ULONG64 MSRRead(ULONG32 reg);
+void MSRWrite(ULONG32 reg, ULONG64 MsrValue);
+
+
+
+// Implemented in vm.c
+int MainVMExitHandler(PGUEST_REGS GuestRegs);
+int IsSupportVM();
+
+int AllocateVMXONRegion(IN PVM_GLOBAL_DATA vmState_ptr);
+int AllocateVMCSRegion(IN PVM_GLOBAL_DATA vmState_ptr);
+int AllocateVMStack(IN PVM_GLOBAL_DATA vmState_ptr);
+
+
+//store the current-vmcs ptr into a specified memoey address
+UINT64 VMPTRST();
+int ClearVMCSRegion(IN PVM_GLOBAL_DATA vmState_ptr);
+int LoadVMCSPtr(IN PVM_GLOBAL_DATA vmState_ptr);
+
+int GetSegmentDescriptor(IN PSEGMENT_SELECTOR SegmentSelector, IN USHORT Selector, IN PUCHAR GdtBase);
+int SetGuestSelector(IN PVOID GDT_Base, IN ULONG Segment_Register, IN USHORT Selector);
+ULONG AdjustControls(IN ULONG Ctl, IN ULONG Msr);
+void SetBit(PVOID Addr, UINT64 bit, BOOLEAN Set);
+void GetBit(PVOID Addr, UINT64 bit);
+BOOLEAN SetIOBitmap(ULONG IOPortNum, INT ProcessorID);
+BOOLEAN SetMsrBitmap(ULONG MsrNum, INT ProcessorID, BOOLEAN ReadDetection, BOOLEAN WriteDetection);
+void FillGuestSelectorData(__in PVOID GdtBase, __in ULONG Segreg, __in USHORT Selector);
+int SetupVMCS(IN PVM_GLOBAL_DATA vmState_ptr);
+
+void VM_Resumer();
+
+/* VM exit handler*/
+void HandleCrAccess(PGUEST_REGS GuestRegs, ULONG ExitQualification);
+void HandleCPUID(PGUEST_REGS state);
+//void HandleVMCALL(PGUEST_REGS GuestRegs);
+BOOLEAN HandleVMCALL(PGUEST_REGS GuestRegs);
+
+// RDMSR / WRMSR
+void HandleMSRRead(PGUEST_REGS GuestRegs);
+void HandleMSRWrite(PGUEST_REGS GuestRegs);
+
+// Ept vm exit
+BOOLEAN HandleEptViolation(PGUEST_REGS GuestRegs);
